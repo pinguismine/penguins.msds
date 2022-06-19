@@ -1,0 +1,146 @@
+---
+title: "NYPD shooting assignment"
+author: "Nicholas"
+date: '2022-06-11'
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Downloading the data 
+
+RMD assignment. As per assignment instructions, 2 visualizations and 1 model is included.   
+   
+First, we import the csv from the url. 
+
+```{r urllink}
+
+url_assignment = "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD"
+```
+
+### Cleaning the data
+
+First, I would want to see what is inside the csv file. We will do the following. 
+
+1. Load up the csv file. 
+2. Take a look at the top 10 rows. 
+
+```{r loaddata}
+
+library(tidyverse)
+nypdraw = read_csv(url_assignment)
+summary(nypdraw)
+
+```
+
+Next, as you can see, there is a total if 19 variables. I am more interested in the race of the perp and the victim, at this point in time, I would think that the datetime variable would prove to be useful in any analysis that I would be doing. Here are my next steps. 
+
+1. Take a smaller subset of the data > thereby dropping any columns I find irrelevant. 
+2. Look at the counts to 'figure out' the datset that I am looking at. 
+
+```{r nypd_perp}
+
+nypd_perp = nypdraw %>%
+select(c("BORO","OCCUR_DATE","OCCUR_TIME", "PERP_RACE"))
+
+summary(nypd_perp)
+nypd_perp %>% head
+
+nypd_grouped_perprace = nypd_perp %>%
+group_by(PERP_RACE) %>%
+summarize(n())
+nypd_grouped_perprace
+
+```
+ 
+### Visualization of Data
+ 
+As we can see from the variable: nypd_grouped_perprace, the top perp race implicated in NYPD shootings are blacks. For my visualization, I would like to see two things:
+
+1. A simple bar graph for perp races. 
+2. Cases over time for blacks and overall 
+
+```{r nypd_histogram}
+race4perps = na.omit(nypd_grouped_perprace$PERP_RACE)
+race4perps = append(race4perps, "NA")
+race4perps = replace(race4perps, race4perps == "AMERICAN INDIAN/ALASKAN NATIVE", "NATIVES")
+race4perps = replace(race4perps, race4perps == "ASIAN / PACIFIC ISLANDER", "A/P ISLANDERS")
+barplot(nypd_grouped_perprace$`n()`, main = 'NYPD shootings by perp race', ylab = 'Counts', names.arg =  race4perps, las=2, cex.names = 0.6)
+
+```
+
+
+As one can see from the barplots above, we will now attempt a second visualization to track the total number of PERP_RACE == BLACK, implicated in NYPD shootings, against the total number shootings over time. 
+
+```{r nypd_perpdated}
+library(lubridate)
+nypd_perp_dated = nypd_perp %>%
+select(c("OCCUR_DATE", "PERP_RACE"))
+nypd_perp_dated = nypd_perp_dated %>%
+mutate(OCCUR_DATE = mdy(OCCUR_DATE))
+nypd_perp_dated
+
+race_subset = nypd_perp_dated %>%
+filter(PERP_RACE == "BLACK")
+
+race_subset = race_subset[order(race_subset$OCCUR_DATE), ]
+race_subset = race_subset %>%
+mutate(counted_race = sequence(n()))
+
+all_subset = nypd_perp_dated
+all_subset = all_subset[order(all_subset$OCCUR_DATE),]
+all_subset = all_subset %>%
+mutate(counted_race2 = sequence(n()))
+
+colors = c("Black" = "blue", "Overall" = "red")
+
+race_subset %>%
+ggplot(aes(x=OCCUR_DATE, y=counted_race))+
+geom_line(aes(color= "Black"))+
+geom_line(data = all_subset, aes(x=OCCUR_DATE, y=counted_race2, color = "Overall")) +
+labs(title = "Plot of number of shooting (Overall and race(BLACK)) over time", y= "Counts", x = "Date", color = "Legend") +
+scale_color_manual(values=colors)
+
+```
+
+### Data Modelling
+
+The last part of the assignment requires a modelling. We will do a simple modelling of the number of race = BLACK against the overall number of shootings. Let us see how it turns up against a linear model. 
+
+
+```{r nypd_modelling}
+
+combined = nypd_perp_dated[order(nypd_perp_dated$OCCUR_DATE),]
+
+combined = combined %>%
+group_by(PERP_RACE) %>%
+mutate(counted_race = sequence(n()))
+combined$index = 1:nrow(combined)
+
+combined = combined %>%
+filter(PERP_RACE == 'BLACK')
+
+mod = lm( counted_race ~ index , data = combined)
+summary(mod)
+
+combined = combined %>% mutate(pred = predict(mod))
+
+color_2 = c("prediction" = 'green', "data" = 'blue')
+
+combined %>% ggplot()+
+geom_line(aes(x = index , y = counted_race, color = 'data'))+
+geom_line(aes(x= index , y= pred, color = 'prediction')) +
+labs(title = 'Visualization of prediction vs data', y = 'counted_race: Black', x='Overall shootings', color = 'Legend')+
+scale_color_manual(values = color_2)
+
+
+```
+
+As you can see from the visualization of prediction vs data, this simple modelling suggests that the counted_race: Black appears to be increasing almost linearly with the number of overall shootings with hardly any signs of deviation. One can only conclude that the black perpetrators implicated in shooting incidents have been keeping up with the overall number of shootings. 
+
+One glaring bias of my brief analysis is that I have failed to look at the incidents per borough and other relevant data. Regardless of race, we do know that socioeconomical issues pervades the notion of crime. A more thorough analysis that looks at data such as crime rates/ borough and linking it education, financial status, marital status of parents etc. will allow us to better analyze the issue of 'perps' committing crime and not gloss over it as simply - a racial issue. 
+
